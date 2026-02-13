@@ -39,27 +39,37 @@ async function fetchOrders() {
 function consolidateSKU(orders) {
   const consolidatedOrders = [];
   orders.forEach((order) => {
-  console.log(order)
-  const combinedItems = [];
-  
+    console.log(order);
+    const combinedItems = [];
+    const duplicateItems = [];
 
-  order.items.forEach((item) => {
-    const existingItem = combinedItems.find((i) => i.sku === item.sku);
-    if (existingItem) {
-      existingItem.value += item.value;
-      existingItem.quantity += item.quantity;
-      existingItem.quantity_to_ship += item.quantity_to_ship;
-      existingItem.quantity_shipped += item.quantity_shipped;
-    } else {
-      combinedItems.push({ ...item });
-    }
+    order.items.forEach((item) => {
+      const existingItem = combinedItems.find((i) => i.sku === item.sku);
+      if (existingItem) {
+        existingItem.value += item.value;
+        existingItem.quantity += item.quantity;
+        existingItem.quantity_to_ship += item.quantity_to_ship;
+        existingItem.quantity_shipped += item.quantity_shipped;
+
+        // Add duplicate item with quantity as 0
+        duplicateItems.push({
+          ...item,
+          quantity: 0,
+          quantity_to_ship: 0,
+          quantity_shipped: 0,
+        });
+      } else {
+        combinedItems.push({ ...item });
+      }
+    });
+
+    // Include duplicate items with quantity as 0
+    combinedItems.push(...duplicateItems);
+
+    consolidatedOrders.push({ order_id: order.order_id, items: combinedItems });
+    console.log(consolidatedOrders[0]);
   });
-
-  consolidatedOrders.push({ order_id: order.order_id, items: combinedItems });
-  console.log(consolidatedOrders[0])
-});
-  return (consolidatedOrders[0]);
-// console.log(obj.orders[0].items);  
+  return consolidatedOrders[0];
 }
 
 function findOrder(orders ,name) {
