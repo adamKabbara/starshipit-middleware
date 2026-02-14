@@ -18,16 +18,14 @@ var requestOptions = {
 (async function () {
   let obj = await fetchOrders();
   let orders = obj.orders;
-  let consolidatedOrders = consolidateOrderSKUS(
-    getOrderswithDuplicateSKUItems(orders)
-  );
-  writeOrderstoJson(consolidatedOrders);
 
   let dups = getOrdersWithDuplicateSKU(orders);
-  // writeOrderstoJson(dups);
-  let consolidatedOrder = consolidateSKU(dups[0]);
-  writeOrderstoJson(consolidatedOrder);
-  // updateOrder(consolidatedOrder);
+  let consolidatedOrders = consolidateSKU(dups);
+  // console.log(consolidatedOrders[0]);
+  writeOrderstoJson(consolidatedOrders);
+  // updateOrder(consolidatedOrders[0]);
+  updateWithRetries(consolidatedOrders);
+  ``;
 })();
 
 async function fetchOrders() {
@@ -37,32 +35,31 @@ async function fetchOrders() {
   ).then((response) => response.json());
 }
 
-function consolidateSKU(order) {
+function consolidateSKU(orders) {
   const consolidatedOrders = [];
-  // orders.forEach((order) => {
-  console.log(order);
-  const combinedItems = [];
-  const duplicateItems = [];
+  orders.forEach((order) => {
+    const combinedItems = [];
+    const duplicateItems = [];
 
-  order.items.forEach((item) => {
-    const existingItem = combinedItems.find((i) => i.sku === item.sku);
-    if (existingItem) {
-      existingItem.value += item.value;
-      existingItem.quantity += item.quantity;
-      existingItem.quantity_to_ship += item.quantity_to_ship;
-      existingItem.quantity_shipped += item.quantity_shipped;
+    order.items.forEach((item) => {
+      const existingItem = combinedItems.find((i) => i.sku === item.sku);
+      if (existingItem) {
+        existingItem.value += item.value;
+        existingItem.quantity += item.quantity;
+        existingItem.quantity_to_ship += item.quantity_to_ship;
+        existingItem.quantity_shipped += item.quantity_shipped;
 
-      // Add duplicate item with quantity as 0
-      duplicateItems.push({
-        ...item,
-        quantity: 0,
-        quantity_to_ship: 0,
-        quantity_shipped: 0,
-      });
-    } else {
-      combinedItems.push({ ...item });
-    }
-    // });
+        // Add duplicate item with quantity as 0
+        duplicateItems.push({
+          ...item,
+          quantity: 0,
+          quantity_to_ship: 0,
+          quantity_shipped: 0,
+        });
+      } else {
+        combinedItems.push({ ...item });
+      }
+    });
 
     // Include duplicate items with quantity as 0
     combinedItems.push(...duplicateItems);
@@ -71,8 +68,8 @@ function consolidateSKU(order) {
       order_id: order.order_id,
       items: combinedItems,
     });
-    console.log(consolidatedOrders[0]);
   });
+  // return { order_id: order.order_id, items: combinedItems };
   return consolidatedOrders;
 }
 
@@ -115,8 +112,8 @@ function writeOrderstoJson(orders) {
   });
 }
 
-function updateOrder(orders) {
-  let raw = JSON.stringify({ order: orders });
+async function updateOrder(order) {
+  let raw = JSON.stringify({ order: order });
   var requestOptions = {
     method: "PUT",
     headers: myHeaders,
@@ -124,10 +121,59 @@ function updateOrder(orders) {
     redirect: "follow",
   };
 
-  fetch("https://api.starshipit.com/api/orders", requestOptions)
-    // .then((response) => response.text())
-    .then((result) => console.log(result))
-    .catch((error) => console.log("error", error));
+  let response = await fetch(
+    "https://api.starshipit.com/api/orders",
+    requestOptions
+  );
+  // .then((response) => response.text())
+  // .then((result) => console.log(result))
+  // .catch((error) => console.log("error", error));
+  return response.status === 200;
+}
+
+function updateOrderList(orders) {
+  orders.forEach((order) => {
+    updateOrder(order);
+  });
+}
+
+async function updateWithRetries(consolidatedOrders) {
+  for (const order of consolidatedOrders) {
+    let retries = 3;
+    while (retries > 0) {
+      let res = await updateOrder(order);
+      if (res) {
+        console.log(`Successfully updated order: ${order.order_id}`);
+        break;
+      } else {
+        retries--;
+        console.error(
+          `Failed to update order: ${order.order_id}. Retries left: ${retries}.`
+        );
+        if (retries === 0) {
+          console.error(`Giving up on order: ${order.order_id}`);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before retry
+        }
+      }
+      // try {
+      //   let res = await updateOrder(order);
+      //   console.log(`Successfully updated order: ${order.order_id}`);
+      //   break; // Exit the retry loop on success
+      // } catch (error) {
+      //   retries--;
+      //   console.error(
+      //     `Failed to update order: ${order.order_id}. Retries left: ${retries}. Error: ${error}`
+      //   );
+      //   // if (retries === 0) {
+      //   console.error(`Giving up on order: ${order.order_id}`);
+      // } else {
+      //   await new Promise((resolve) => setTimeout(resolve, 2000)); // Delay before retry
+      // }
+      // }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before next API call
+  }
 }
 
 function getOrdersWithDuplicateSKU(orders) {
