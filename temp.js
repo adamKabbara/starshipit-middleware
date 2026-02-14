@@ -18,21 +18,16 @@ var requestOptions = {
 (async function () {
   let obj = await fetchOrders();
   let orders = obj.orders;
-  let consolidatedOrders = consolidateOrderSKUS(
-    getOrderswithDuplicateSKUItems(orders)
-  );
-  writeOrderstoJson(consolidatedOrders);
+  let dupOrders = getOrdersWithDuplicateSKU(orders);
+  let consolidatedOrder = consolidateSKU([dupOrders[0]]);
+  writeOrderstoJson(dupOrders);
 
-  let dups = getOrdersWithDuplicateSKU(orders);
-  // writeOrderstoJson(dups);
-  let consolidatedOrder = consolidateSKU(dups[0]);
-  writeOrderstoJson(consolidatedOrder);
-  // updateOrder(consolidatedOrder);
+  // updateOrder(consolidatedOrder)
 })();
 
 async function fetchOrders() {
   return await fetch(
-    "https://api.starshipit.com/api/orders/unshipped?limit=100&since_order_date=2026-02-103T06:00:00.000Z",
+    "https://api.starshipit.com/api/orders/unshipped",
     requestOptions
   ).then((response) => response.json());
 }
@@ -62,18 +57,15 @@ function consolidateSKU(order) {
     } else {
       combinedItems.push({ ...item });
     }
-    // });
-
-    // Include duplicate items with quantity as 0
-    combinedItems.push(...duplicateItems);
-
-    consolidatedOrders.push({
-      order_id: order.order_id,
-      items: combinedItems,
-    });
-    console.log(consolidatedOrders[0]);
   });
-  return consolidatedOrders;
+
+  // Include duplicate items with quantity as 0
+  combinedItems.push(...duplicateItems);
+
+  consolidatedOrders.push({ order_id: order.order_id, items: combinedItems });
+  console.log(consolidatedOrders[0]);
+  // });
+  return consolidatedOrders[0];
 }
 
 function findOrder(orders, name) {
@@ -115,8 +107,8 @@ function writeOrderstoJson(orders) {
   });
 }
 
-function updateOrder(orders) {
-  let raw = JSON.stringify({ order: orders });
+function updateOrder(order) {
+  let raw = JSON.stringify({ order: order });
   var requestOptions = {
     method: "PUT",
     headers: myHeaders,
@@ -125,7 +117,7 @@ function updateOrder(orders) {
   };
 
   fetch("https://api.starshipit.com/api/orders", requestOptions)
-    // .then((response) => response.text())
+    .then((response) => response.text())
     .then((result) => console.log(result))
     .catch((error) => console.log("error", error));
 }
