@@ -1,7 +1,6 @@
 // import orders from './orders.js'
 const fs = require("fs");
 
-
 var myHeaders = new Headers();
 myHeaders.append("Content-Type", "application/json");
 myHeaders.append("StarShipIT-Api-Key", "c438e1afe4eb46db8e23e43812f1b4d0");
@@ -19,22 +18,18 @@ var requestOptions = {
 (async function () {
   let obj = await fetchOrders();
   let orders = obj.orders;
-  // getOrderCount(orders)
-  // findOrder(orders, "Adam Kabbara")
-  // writeOrderstoJson(orders)
-  let order = findOrderById(orders, "665994928");
-  let consolidatedOrder = consolidateSKU([order]);
 
-  
-  // updateOrder(consolidatedOrder)
-})()
+  // let consolidatedOrder = consolidateSKU([order]);
+
+  // updateOrder(consolidatedOrder);
+})();
 
 async function fetchOrders() {
-  return await fetch("https://api.starshipit.com/api/orders/unshipped", requestOptions)
-  .then(response => response.json())
-
+  return await fetch(
+    "https://api.starshipit.com/api/orders/unshipped?limit=100&since_order_date=2026-02-103T06:00:00.000Z",
+    requestOptions
+  ).then((response) => response.json());
 }
-
 
 function consolidateSKU(orders) {
   const consolidatedOrders = [];
@@ -72,7 +67,7 @@ function consolidateSKU(orders) {
   return consolidatedOrders[0];
 }
 
-function findOrder(orders ,name) {
+function findOrder(orders, name) {
   const order = orders.find((order) => order.destination.name === name);
   if (order) {
     console.log(order);
@@ -82,14 +77,13 @@ function findOrder(orders ,name) {
 }
 
 function findOrderById(orders, id) {
-  
   const order = orders.find((order) => order.order_id == id);
   if (order) {
-    return order
+    return order;
   } else {
     console.log("Order not found for ID:", id);
   }
-} 
+}
 
 function getOrderCount(orders) {
   console.log("Total number of orders:", orders.length);
@@ -100,7 +94,6 @@ function listOrders(orders) {
     console.log(order);
   });
 }
-
 
 function writeOrderstoJson(orders) {
   const jsonData = JSON.stringify(orders, null, 2);
@@ -113,10 +106,8 @@ function writeOrderstoJson(orders) {
   });
 }
 
-
-function updateOrder(order) {
-
-  let raw = JSON.stringify({ "order": order })
+function updateOrder(orders) {
+  let raw = JSON.stringify(orders);
   var requestOptions = {
     method: "PUT",
     headers: myHeaders,
@@ -124,11 +115,8 @@ function updateOrder(order) {
     redirect: "follow",
   };
 
-
-
   fetch("https://api.starshipit.com/api/orders", requestOptions)
     .then((response) => response.text())
     .then((result) => console.log(result))
     .catch((error) => console.log("error", error));
 }
-
