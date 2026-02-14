@@ -18,10 +18,12 @@ var requestOptions = {
 (async function () {
   let obj = await fetchOrders();
   let orders = obj.orders;
+  let consolidatedOrders = consolidateOrderSKUS(
+    getOrderswithDuplicateSKUItems(orders)
+  );
+  writeOrderstoJson(consolidatedOrders);
 
-  // let consolidatedOrder = consolidateSKU([order]);
-
-  // updateOrder(consolidatedOrder);
+  updateOrder(consolidatedOrders);
 })();
 
 async function fetchOrders() {
@@ -31,10 +33,9 @@ async function fetchOrders() {
   ).then((response) => response.json());
 }
 
-function consolidateSKU(orders) {
+function consolidateOrderSKUS(orders) {
   const consolidatedOrders = [];
   orders.forEach((order) => {
-    console.log(order);
     const combinedItems = [];
     const duplicateItems = [];
 
@@ -62,9 +63,8 @@ function consolidateSKU(orders) {
     combinedItems.push(...duplicateItems);
 
     consolidatedOrders.push({ order_id: order.order_id, items: combinedItems });
-    console.log(consolidatedOrders[0]);
   });
-  return consolidatedOrders[0];
+  return consolidatedOrders;
 }
 
 function findOrder(orders, name) {
@@ -107,6 +107,7 @@ function writeOrderstoJson(orders) {
 }
 
 function updateOrder(orders) {
+  console.log(orders);
   let raw = JSON.stringify(orders);
   var requestOptions = {
     method: "PUT",
@@ -115,8 +116,23 @@ function updateOrder(orders) {
     redirect: "follow",
   };
 
-  fetch("https://api.starshipit.com/api/orders", requestOptions)
-    .then((response) => response.text())
+  fetch("https://api.starshipit.com/api/orders/update", requestOptions)
+    // .then((response) => response.text())
     .then((result) => console.log(result))
     .catch((error) => console.log("error", error));
+}
+
+function getOrderswithDuplicateSKUItems(orders) {
+  const ordersWithDuplicateSKUs = [];
+  orders.forEach((order) => {
+    const skuCounts = {};
+    order.items.forEach((item) => {
+      skuCounts[item.sku] = (skuCounts[item.sku] || 0) + 1;
+    });
+    const hasDuplicates = Object.values(skuCounts).some((count) => count > 1);
+    if (hasDuplicates) {
+      ordersWithDuplicateSKUs.push(order);
+    }
+  });
+  return ordersWithDuplicateSKUs;
 }
