@@ -1,4 +1,5 @@
 export async function handler(event, context) {
+  console.log("Running scheduled UpdatedOrders");
   var myHeaders = new Headers();
   myHeaders.append("Content-Type", "application/json");
   myHeaders.append("StarShipIT-Api-Key", "c438e1afe4eb46db8e23e43812f1b4d0");
@@ -171,3 +172,7 @@ export async function handler(event, context) {
     body: JSON.stringify({ success: true }),
   };
 }
+
+export const config = {
+  schedule: "*/1 * * * *", // every 5 minutes
+};
