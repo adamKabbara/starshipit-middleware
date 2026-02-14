@@ -174,5 +174,5 @@ export async function handler(event, context) {
 }
 
 export const config = {
-  schedule: "*/1 * * * *", // every 5 minutes
+  schedule: "*/15 * * * *", // every 5 minutes
 };
