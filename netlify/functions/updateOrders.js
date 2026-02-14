@@ -141,11 +141,11 @@ export async function handler(event, context) {
           if (retries === 0) {
             console.error(`Giving up on order: ${order.order_id}`);
           } else {
-            await new Promise((resolve) => setTimeout(resolve, 100)); // Delay before retry
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before retry
           }
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 100)); // Delay before next API call
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before next API call
     }
   }
 
