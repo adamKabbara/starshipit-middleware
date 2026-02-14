@@ -13,15 +13,23 @@ export async function handler(event, context) {
     redirect: "follow",
   };
 
-  (async function () {
+  // (async function () {
+  try {
     let obj = await fetchOrders();
     let orders = obj.orders;
 
     let dups = getOrdersWithDuplicateSKU(orders);
     let consolidatedOrders = consolidateSKU(dups);
-    updateWithRetries(consolidatedOrders);
-    ``;
-  })();
+    await updateWithRetries(consolidatedOrders);
+  } catch (error) {
+    console.error("Error fetching or processing orders:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, error: error.message }),
+    };
+  }
+
+  // })();
 
   async function fetchOrders() {
     return await fetch(
@@ -133,11 +141,11 @@ export async function handler(event, context) {
           if (retries === 0) {
             console.error(`Giving up on order: ${order.order_id}`);
           } else {
-            await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before retry
+            await new Promise((resolve) => setTimeout(resolve, 100)); // Delay before retry
           }
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before next API call
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Delay before next API call
     }
   }
 
