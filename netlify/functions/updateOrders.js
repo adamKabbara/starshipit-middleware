@@ -1,36 +1,52 @@
-export async function handler(event, context) {
-  let apiKey1 = "c438e1afe4eb46db8e23e43812f1b4d0";
-  let apiKey2 = "6350596f90b345d9b3987081ae7a0929";
-  console.log("Running scheduled UpdatedOrders");
-  var myHeaders = new Headers();
-  myHeaders.append("Content-Type", "application/json");
-  myHeaders.append("StarShipIT-Api-Key", "c438e1afe4eb46db8e23e43812f1b4d0");
-  myHeaders.append(
-    "Ocp-Apim-Subscription-Key",
-    "9ea24a20359e4b228a7cb5d0b695e6f0"
-  );
+// import { writeFile } from "fs/promises";
 
-  let updatedOrderMsg;
+export async function handler(event, context) {
+  const apiKey1 = "c438e1afe4eb46db8e23e43812f1b4d0";
+  const apiKey2 = "6350596f90b345d9b3987081ae7a0929";
+  const apiKeys = [apiKey1, apiKey2];
+  const ocpKey = "9ea24a20359e4b228a7cb5d0b695e6f0";
+
+  console.log("Running scheduled UpdatedOrders");
+  let myHeaders;
+  let requestOptions;
+
+  const accountResults = [];
   let allDupOrders = [];
   let dupOrderswithZeroQty = [];
-  const ordersWithDuplicateSKUExcludingZeroQty = [];
-
-
-  var requestOptions = {
-    method: "GET",
-    headers: myHeaders,
-    redirect: "follow",
-  };
-
-
+  let ordersWithDuplicateSKUExcludingZeroQty = [];
 
   try {
-    let obj = await fetchOrders();
-    let orders = obj.orders;
+    for (let i = 0; i < apiKeys.length; i++) {
+      const apiKey = apiKeys[i];
+      myHeaders = new Headers();
+      myHeaders.append("Content-Type", "application/json");
+      myHeaders.append("StarShipIT-Api-Key", apiKey);
+      myHeaders.append("Ocp-Apim-Subscription-Key", ocpKey);
 
-    let dups = getOrdersWithDuplicateSKU(orders);
-    let consolidatedOrders = consolidateSKU(dups);
-    updatedOrderMsg = await updateWithRetries(consolidatedOrders);
+      requestOptions = {
+        method: "GET",
+        headers: myHeaders,
+        redirect: "follow",
+      };
+
+      allDupOrders = [];
+      ordersWithDuplicateSKUExcludingZeroQty = [];
+      dupOrderswithZeroQty = [];
+
+      let obj = await fetchOrders();
+      let orders = obj.orders;
+
+      // await writeOrdersToFile(obj, `orders-${i + 1}.json`);
+
+      let dups = getOrdersWithDuplicateSKU(orders);
+      let consolidatedOrders = consolidateSKU(dups);
+      let updatedOrders = await updateWithRetries(consolidatedOrders);
+
+      accountResults.push({
+        allDupOrders: [...allDupOrders],
+        updatedOrders,
+      });
+    }
   } catch (error) {
     console.error("Error fetching or processing orders:", error);
     return {
@@ -46,6 +62,10 @@ export async function handler(event, context) {
       requestOptions
     ).then((response) => response.json());
   }
+
+  // async function writeOrdersToFile(orders, filename = "orders.json") {
+  //   await writeFile(filename, JSON.stringify(orders, null, 2), "utf-8");
+  // }
 
   function consolidateSKU(orders) {
 
@@ -116,7 +136,7 @@ export async function handler(event, context) {
         let res = await updateOrder(order);
         if (res) {
           console.log(`Successfully updated order: ${order.order_id}`);
-          SuccessfullyUpdated.push([order.order_id, order.destination.name]);
+          SuccessfullyUpdated.push([order.order_id, order.destination?.name ?? null]);
           break;
         } else {
           retries--;
@@ -176,13 +196,13 @@ export async function handler(event, context) {
 
     return ordersWithDuplicateSKUExcludingZeroQty;
   }
-
+  // console.log(JSON.stringify(accountResults))
   return {
     statusCode: 200,
     body: JSON.stringify({
       success: true,
-      allDupOrders: allDupOrders,
-      updatedOrders: updatedOrderMsg,
+      account1: accountResults[0] ?? { allDupOrders: [], updatedOrders: [] },
+      account2: accountResults[1] ?? { allDupOrders: [], updatedOrders: [] },
     }),
   };
 }
@@ -191,3 +211,5 @@ export const config = {
   schedule: "*/15 * * * *", // every 5 minutes
 };
 
+
+// handler()
