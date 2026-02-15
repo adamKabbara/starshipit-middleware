@@ -21,7 +21,7 @@ export async function handler(event, context) {
 
     let dups = getOrdersWithDuplicateSKU(orders);
     let consolidatedOrders = consolidateSKU(dups);
-    await updateWithRetries(consolidatedOrders);
+    let updatedOrderMsg = await updateWithRetries(consolidatedOrders);
   } catch (error) {
     console.error("Error fetching or processing orders:", error);
     return {
@@ -127,12 +127,14 @@ export async function handler(event, context) {
   }
 
   async function updateWithRetries(consolidatedOrders) {
+    let SuccessfullyUpdated = "Orders consolidated:\n";
     for (const order of consolidatedOrders) {
       let retries = 3;
       while (retries > 0) {
         let res = await updateOrder(order);
         if (res) {
           console.log(`Successfully updated order: ${order.order_id}`);
+          SuccessfullyUpdated += `Order ID: ${order.order_id}\n`;
           break;
         } else {
           retries--;
@@ -148,6 +150,7 @@ export async function handler(event, context) {
       }
       await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before next API call
     }
+    return SuccessfullyUpdated;
   }
 
   function getOrdersWithDuplicateSKU(orders) {
@@ -169,7 +172,10 @@ export async function handler(event, context) {
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ success: true }),
+    body: JSON.stringify({
+      success: true,
+      updatedOrders: updatedOrderMsg,
+    }),
   };
 }
 
