@@ -9,6 +9,10 @@ export async function handler(event, context) {
   );
 
   let updatedOrderMsg;
+  let allDupOrders = [];
+  let dupOrderswithZeroQty = [];
+  const ordersWithDuplicateSKUExcludingZeroQty = [];
+
 
   var requestOptions = {
     method: "GET",
@@ -16,7 +20,6 @@ export async function handler(event, context) {
     redirect: "follow",
   };
 
-  // (async function () {
   try {
     let obj = await fetchOrders();
     let orders = obj.orders;
@@ -32,7 +35,6 @@ export async function handler(event, context) {
     };
   }
 
-  // })();
 
   async function fetchOrders() {
     return await fetch(
@@ -42,6 +44,7 @@ export async function handler(event, context) {
   }
 
   function consolidateSKU(orders) {
+
     const consolidatedOrders = [];
     orders.forEach((order) => {
       const combinedItems = [];
@@ -72,38 +75,11 @@ export async function handler(event, context) {
 
       consolidatedOrders.push({
         order_id: order.order_id,
+        destination: order.destination ? { name: order.destination.name } : undefined,
         items: combinedItems,
       });
     });
     return consolidatedOrders;
-  }
-
-  function findOrder(orders, name) {
-    const order = orders.find((order) => order.destination.name === name);
-    if (order) {
-      console.log(order);
-    } else {
-      console.log("Order not found for destination name:", name);
-    }
-  }
-
-  function findOrderById(orders, id) {
-    const order = orders.find((order) => order.order_id == id);
-    if (order) {
-      return order;
-    } else {
-      console.log("Order not found for ID:", id);
-    }
-  }
-
-  function getOrderCount(orders) {
-    console.log("Total number of orders:", orders.length);
-  }
-
-  function listOrders(orders) {
-    obj.orders.forEach((order) => {
-      console.log(order);
-    });
   }
 
   async function updateOrder(order) {
@@ -136,8 +112,7 @@ export async function handler(event, context) {
         let res = await updateOrder(order);
         if (res) {
           console.log(`Successfully updated order: ${order.order_id}`);
-          console.log(order);
-          SuccessfullyUpdated.push([order.order_id, order.destination]);
+          SuccessfullyUpdated.push([order.order_id, order.destination.name]);
           break;
         } else {
           retries--;
@@ -167,16 +142,42 @@ export async function handler(event, context) {
         (count) => count > 1
       );
       if (hasDuplicateSKU) {
+        allDupOrders.push([
+          order.order_id,
+          order.destination && order.destination.name ? order.destination.name : null
+        ]);
         ordersWithDuplicateSKU.push(order);
       }
     });
-    return ordersWithDuplicateSKU;
+
+    // Find orders with duplicate SKU, but only count items with quantity > 0
+    orders.forEach((order) => {
+      const skuCount = {};
+      order.items.forEach((item) => {
+        if (item.quantity > 0) {
+          skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
+        }
+      });
+      const hasDuplicateSKU = Object.values(skuCount).some(
+        (count) => count > 1
+      );
+      if (hasDuplicateSKU) {
+        ordersWithDuplicateSKUExcludingZeroQty.push(order);
+        dupOrderswithZeroQty.push([
+          order.order_id,
+          order.destination && order.destination.name ? order.destination.name : null
+        ]);
+      }
+    });
+
+    return ordersWithDuplicateSKUExcludingZeroQty;
   }
 
   return {
     statusCode: 200,
     body: JSON.stringify({
       success: true,
+      allDupOrders: allDupOrders,
       updatedOrders: updatedOrderMsg,
     }),
   };
@@ -185,3 +186,4 @@ export async function handler(event, context) {
 export const config = {
   schedule: "*/15 * * * *", // every 5 minutes
 };
+
