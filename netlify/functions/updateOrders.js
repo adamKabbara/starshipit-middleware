@@ -1,4 +1,6 @@
 export async function handler(event, context) {
+  let apiKey1 = "c438e1afe4eb46db8e23e43812f1b4d0";
+  let apiKey2 = "6350596f90b345d9b3987081ae7a0929";
   console.log("Running scheduled UpdatedOrders");
   var myHeaders = new Headers();
   myHeaders.append("Content-Type", "application/json");
@@ -19,6 +21,8 @@ export async function handler(event, context) {
     headers: myHeaders,
     redirect: "follow",
   };
+
+
 
   try {
     let obj = await fetchOrders();
