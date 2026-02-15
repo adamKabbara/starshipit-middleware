@@ -136,7 +136,7 @@ export async function handler(event, context) {
         let res = await updateOrder(order);
         if (res) {
           console.log(`Successfully updated order: ${order.order_id}`);
-          SuccessfullyUpdated.push(order.order_id);
+          SuccessfullyUpdated.push([order.order_id, order.destination]);
           break;
         } else {
           retries--;
