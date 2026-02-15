@@ -129,14 +129,14 @@ export async function handler(event, context) {
   }
 
   async function updateWithRetries(consolidatedOrders) {
-    let SuccessfullyUpdated = "Orders consolidated:\n";
+    let SuccessfullyUpdated = [];
     for (const order of consolidatedOrders) {
       let retries = 3;
       while (retries > 0) {
         let res = await updateOrder(order);
         if (res) {
           console.log(`Successfully updated order: ${order.order_id}`);
-          SuccessfullyUpdated += `Order ID: ${order.order_id}\n`;
+          SuccessfullyUpdated.push(order.order_id);
           break;
         } else {
           retries--;
