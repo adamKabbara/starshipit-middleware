@@ -1,3 +1,5 @@
+// import { writeFile } from "fs/promises";
+
 export async function handler(event, context) {
   console.log("Running scheduled UpdatedOrders");
   var myHeaders = new Headers();
@@ -24,6 +26,9 @@ export async function handler(event, context) {
     let obj = await fetchOrders();
     let orders = obj.orders;
 
+    // await writeOrdersToFile(obj);
+
+    // return
     let dups = getOrdersWithDuplicateSKU(orders);
     let consolidatedOrders = consolidateSKU(dups);
     updatedOrderMsg = await updateWithRetries(consolidatedOrders);
@@ -42,6 +47,10 @@ export async function handler(event, context) {
       requestOptions
     ).then((response) => response.json());
   }
+
+  // async function writeOrdersToFile(orders) {
+  //   await writeFile("orders.json", JSON.stringify(orders, null, 2), "utf-8");
+  // }
 
   function consolidateSKU(orders) {
 
@@ -173,6 +182,7 @@ export async function handler(event, context) {
     return ordersWithDuplicateSKUExcludingZeroQty;
   }
 
+  console.log(allDupOrders)
   return {
     statusCode: 200,
     body: JSON.stringify({
@@ -187,3 +197,5 @@ export const config = {
   schedule: "*/15 * * * *", // every 5 minutes
 };
 
+
+// handler()
