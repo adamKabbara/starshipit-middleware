@@ -14,6 +14,8 @@ export async function handler(event, context) {
   let allDupOrders = [];
   let dupOrderswithZeroQty = [];
   let ordersWithDuplicateSKUExcludingZeroQty = [];
+  const API_DELAY_MS = 1000;
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   try {
     for (let i = 0; i < apiKeys.length; i++) {
@@ -34,18 +36,38 @@ export async function handler(event, context) {
       dupOrderswithZeroQty = [];
 
       let obj = await fetchOrders();
+      await delay(API_DELAY_MS);
       let orders = obj.orders;
 
       // await writeOrdersToFile(obj, `orders-${i + 1}.json`);
 
       let dups = getOrdersWithDuplicateSKU(orders);
       let consolidatedOrders = consolidateSKU(dups);
-      let updatedOrders = await updateWithRetries(consolidatedOrders);
+
+      const SKUCUSTOM4PACK = "SKUCUSTOM4PACK";
+      const hasSkuCustom4PackWithNonZeroQty = (o) =>
+        o.items.some((item) => item.sku === SKUCUSTOM4PACK && item.quantity !== 0);
+      const ordersWithSkuCustom4Pack = orders.filter((o) =>
+        o.items.some((item) => item.sku === SKUCUSTOM4PACK)
+      );
+      const dupOrderIds = new Set(dups.map((d) => d.order_id));
+      const skuCustom4PackOnlyOrders = ordersWithSkuCustom4Pack.filter(
+        (o) => !dupOrderIds.has(o.order_id) && hasSkuCustom4PackWithNonZeroQty(o)
+      );
+      const skuCustom4PackUpdates = skuCustom4PackOnlyOrders.map(buildOrderWithSkuCustom4PackZeroed);
+
+      let updatedFromDuplicateSku = await updateWithRetries(consolidatedOrders);
+      let updatedFromSkuCustom4Pack = await updateWithRetries(skuCustom4PackUpdates);
 
       accountResults.push({
         allDupOrders: [...allDupOrders],
-        updatedOrders,
+        updatedFromDuplicateSku,
+        updatedFromSkuCustom4Pack,
       });
+
+      if (i < apiKeys.length - 1) {
+        await delay(API_DELAY_MS);
+      }
     }
   } catch (error) {
     console.error("Error fetching or processing orders:", error);
@@ -97,6 +119,15 @@ export async function handler(event, context) {
       // Include duplicate items with quantity as 0
       combinedItems.push(...duplicateItems);
 
+      // Set SKUCUSTOM4PACK item quantities to 0
+      combinedItems.forEach((item) => {
+        if (item.sku === "SKUCUSTOM4PACK") {
+          item.quantity = 0;
+          item.quantity_to_ship = 0;
+          item.quantity_shipped = 0;
+        }
+      });
+
       consolidatedOrders.push({
         order_id: order.order_id,
         destination: order.destination ? { name: order.destination.name } : undefined,
@@ -104,6 +135,18 @@ export async function handler(event, context) {
       });
     });
     return consolidatedOrders;
+  }
+
+  function buildOrderWithSkuCustom4PackZeroed(order) {
+    return {
+      order_id: order.order_id,
+      destination: order.destination ? { name: order.destination.name } : undefined,
+      items: order.items.map((item) =>
+        item.sku === "SKUCUSTOM4PACK"
+          ? { ...item, quantity: 0, quantity_to_ship: 0, quantity_shipped: 0 }
+          : { ...item }
+      ),
+    };
   }
 
   async function updateOrder(order) {
@@ -131,6 +174,7 @@ export async function handler(event, context) {
   async function updateWithRetries(consolidatedOrders) {
     let SuccessfullyUpdated = [];
     for (const order of consolidatedOrders) {
+      await delay(API_DELAY_MS);
       let retries = 3;
       while (retries > 0) {
         let res = await updateOrder(order);
@@ -146,11 +190,10 @@ export async function handler(event, context) {
           if (retries === 0) {
             console.error(`Giving up on order: ${order.order_id}`);
           } else {
-            await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before retry
+            await delay(API_DELAY_MS);
           }
         }
       }
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Delay before next API call
     }
     return SuccessfullyUpdated;
   }
@@ -201,15 +244,23 @@ export async function handler(event, context) {
     statusCode: 200,
     body: JSON.stringify({
       success: true,
-      account1: accountResults[0] ?? { allDupOrders: [], updatedOrders: [] },
-      account2: accountResults[1] ?? { allDupOrders: [], updatedOrders: [] },
+      account1: accountResults[0] ?? {
+        allDupOrders: [],
+        updatedFromDuplicateSku: [],
+        updatedFromSkuCustom4Pack: [],
+      },
+      account2: accountResults[1] ?? {
+        allDupOrders: [],
+        updatedFromDuplicateSku: [],
+        updatedFromSkuCustom4Pack: [],
+      },
     }),
   };
 }
 
-export const config = {
-  schedule: "*/15 * * * *", // every 5 minutes
-};
+// export const config = {
+//   schedule: "*/15 * * * *", // every 5 minutes
+// };
 
 
-// handler()
+// handler().then((res) => console.log(res))
