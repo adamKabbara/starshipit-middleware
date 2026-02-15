@@ -1,4 +1,4 @@
-// import { writeFile } from "fs/promises";
+import { writeFile } from "fs/promises";
 
 export async function handler(event, context) {
   console.log("Running scheduled UpdatedOrders");
@@ -26,9 +26,9 @@ export async function handler(event, context) {
     let obj = await fetchOrders();
     let orders = obj.orders;
 
-    // await writeOrdersToFile(obj);
+    await writeOrdersToFile(obj);
 
-    // return
+    return
     let dups = getOrdersWithDuplicateSKU(orders);
     let consolidatedOrders = consolidateSKU(dups);
     updatedOrderMsg = await updateWithRetries(consolidatedOrders);
@@ -43,14 +43,14 @@ export async function handler(event, context) {
 
   async function fetchOrders() {
     return await fetch(
-      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_order_date=2026-02-103T06:00:00.000Z",
+      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_last_updated=2024-05-27T06:00:00.000Z&since_order_date=2024-05-27T06:00:00.000Z",
       requestOptions
     ).then((response) => response.json());
   }
 
-  // async function writeOrdersToFile(orders) {
-  //   await writeFile("orders.json", JSON.stringify(orders, null, 2), "utf-8");
-  // }
+  async function writeOrdersToFile(orders) {
+    await writeFile("orders.json", JSON.stringify(orders, null, 2), "utf-8");
+  }
 
   function consolidateSKU(orders) {
 
@@ -198,4 +198,4 @@ export const config = {
 };
 
 
-// handler()
+handler()

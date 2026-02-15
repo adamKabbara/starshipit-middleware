@@ -38,7 +38,7 @@ export async function handler(event, context) {
 
   async function fetchOrders() {
     return await fetch(
-      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_order_date=2026-02-103T06:00:00.000Z",
+      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_last_updated=2024-05-27T06:00:00.000Z&since_order_date=2024-05-27T06:00:00.000Z",
       requestOptions
     ).then((response) => response.json());
   }
