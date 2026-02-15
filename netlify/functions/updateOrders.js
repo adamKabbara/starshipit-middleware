@@ -8,6 +8,8 @@ export async function handler(event, context) {
     "9ea24a20359e4b228a7cb5d0b695e6f0"
   );
 
+  let updatedOrderMsg;
+
   var requestOptions = {
     method: "GET",
     headers: myHeaders,
@@ -21,7 +23,7 @@ export async function handler(event, context) {
 
     let dups = getOrdersWithDuplicateSKU(orders);
     let consolidatedOrders = consolidateSKU(dups);
-    let updatedOrderMsg = await updateWithRetries(consolidatedOrders);
+    updatedOrderMsg = await updateWithRetries(consolidatedOrders);
   } catch (error) {
     console.error("Error fetching or processing orders:", error);
     return {
