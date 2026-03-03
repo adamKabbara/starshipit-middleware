@@ -1,138 +1,270 @@
-// import orders from './orders.js'
-const fs = require("fs");
+// import { writeFile } from "fs/promises";
 
-var myHeaders = new Headers();
-myHeaders.append("Content-Type", "application/json");
-myHeaders.append("StarShipIT-Api-Key", "c438e1afe4eb46db8e23e43812f1b4d0");
-myHeaders.append(
-  "Ocp-Apim-Subscription-Key",
-  "9ea24a20359e4b228a7cb5d0b695e6f0"
-);
+export async function handler(event, context) {
+  const apiKey1 = "c438e1afe4eb46db8e23e43812f1b4d0";
+  const apiKey2 = "6350596f90b345d9b3987081ae7a0929";
+  const apiKeys = [apiKey1, apiKey2];
+  const ocpKey = "9ea24a20359e4b228a7cb5d0b695e6f0";
 
-var requestOptions = {
-  method: "GET",
-  headers: myHeaders,
-  redirect: "follow",
-};
+  console.log("Running scheduled UpdatedOrders");
+  let myHeaders;
+  let requestOptions;
 
-(async function () {
-  let obj = await fetchOrders();
-  let orders = obj.orders;
-  let dupOrders = getOrdersWithDuplicateSKU(orders);
-  let consolidatedOrder = consolidateSKU([dupOrders[0]]);
-  writeOrderstoJson(dupOrders);
+  const accountResults = [];
+  let allDupOrders = [];
+  let dupOrderswithZeroQty = [];
+  let ordersWithDuplicateSKUExcludingZeroQty = [];
+  const API_DELAY_MS = 1000;
+  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK"];
 
-  // updateOrder(consolidatedOrder)
-})();
+  try {
+    for (let i = 0; i < apiKeys.length; i++) {
+      const apiKey = apiKeys[i];
+      myHeaders = new Headers();
+      myHeaders.append("Content-Type", "application/json");
+      myHeaders.append("StarShipIT-Api-Key", apiKey);
+      myHeaders.append("Ocp-Apim-Subscription-Key", ocpKey);
 
-async function fetchOrders() {
-  return await fetch(
-    "https://api.starshipit.com/api/orders/unshipped",
-    requestOptions
-  ).then((response) => response.json());
-}
+      requestOptions = {
+        method: "GET",
+        headers: myHeaders,
+        redirect: "follow",
+      };
 
-function consolidateSKU(order) {
-  const consolidatedOrders = [];
-  // orders.forEach((order) => {
-  console.log(order);
-  const combinedItems = [];
-  const duplicateItems = [];
+      allDupOrders = [];
+      ordersWithDuplicateSKUExcludingZeroQty = [];
+      dupOrderswithZeroQty = [];
 
-  order.items.forEach((item) => {
-    const existingItem = combinedItems.find((i) => i.sku === item.sku);
-    if (existingItem) {
-      existingItem.value += item.value;
-      existingItem.quantity += item.quantity;
-      existingItem.quantity_to_ship += item.quantity_to_ship;
-      existingItem.quantity_shipped += item.quantity_shipped;
+      let obj = await fetchOrders();
 
-      // Add duplicate item with quantity as 0
-      duplicateItems.push({
-        ...item,
-        quantity: 0,
-        quantity_to_ship: 0,
-        quantity_shipped: 0,
+      await delay(API_DELAY_MS);
+      let orders = obj.orders;
+
+      await writeOrdersToFile(obj, `orders-${i + 1}.json`);
+
+      let dups = getOrdersWithDuplicateSKU(orders);
+      let consolidatedOrders = consolidateSKU(dups);
+
+      const hasSkuCustom4PackWithNonZeroQty = (o) =>
+        o.items.some(
+          (item) => SKUS_TO_ZERO.includes(item.sku) && item.quantity !== 0
+        );
+      const ordersWithSkuCustom4Pack = orders.filter((o) =>
+        o.items.some((item) => SKUS_TO_ZERO.includes(item.sku))
+      );
+      const dupOrderIds = new Set(dups.map((d) => d.order_id));
+      const skuCustom4PackOnlyOrders = ordersWithSkuCustom4Pack.filter(
+        (o) => !dupOrderIds.has(o.order_id) && hasSkuCustom4PackWithNonZeroQty(o)
+      );
+      const skuCustom4PackUpdates = skuCustom4PackOnlyOrders.map(buildOrderWithSkuCustom4PackZeroed);
+
+      let updatedFromDuplicateSku = await updateWithRetries(consolidatedOrders);
+      let updatedFromSkuCustom4Pack = await updateWithRetries(skuCustom4PackUpdates);
+
+      accountResults.push({
+        allDupOrders: [...allDupOrders],
+        updatedFromDuplicateSku,
+        updatedFromSkuCustom4Pack,
       });
-    } else {
-      combinedItems.push({ ...item });
+
+      if (i < apiKeys.length - 1) {
+        await delay(API_DELAY_MS);
+      }
     }
-  });
-
-  // Include duplicate items with quantity as 0
-  combinedItems.push(...duplicateItems);
-
-  consolidatedOrders.push({ order_id: order.order_id, items: combinedItems });
-  console.log(consolidatedOrders[0]);
-  // });
-  return consolidatedOrders[0];
-}
-
-function findOrder(orders, name) {
-  const order = orders.find((order) => order.destination.name === name);
-  if (order) {
-    console.log(order);
-  } else {
-    console.log("Order not found for destination name:", name);
+  } catch (error) {
+    console.error("Error fetching or processing orders:", error);
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ success: false, error: error.message }),
+    };
   }
-}
 
-function findOrderById(orders, id) {
-  const order = orders.find((order) => order.order_id == id);
-  if (order) {
-    return order;
-  } else {
-    console.log("Order not found for ID:", id);
+
+  async function fetchOrders() {
+    return await fetch(
+      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_last_updated=2024-05-27T06:00:00.000Z&since_order_date=2024-05-27T06:00:00.000Z",
+      requestOptions
+    ).then((response) => response.json());
   }
-}
 
-function getOrderCount(orders) {
-  console.log("Total number of orders:", orders.length);
-}
+  // async function writeOrdersToFile(orders, filename = "orders.json") {
+  //   await writeFile(filename, JSON.stringify(orders, null, 2), "utf-8");
+  // }
 
-function listOrders(orders) {
-  obj.orders.forEach((order) => {
-    console.log(order);
-  });
-}
+  function consolidateSKU(orders) {
 
-function writeOrderstoJson(orders) {
-  const jsonData = JSON.stringify(orders, null, 2);
-  fs.writeFile("orders.json", jsonData, (err) => {
-    if (err) {
-      console.error("Error writing to file:", err);
-    } else {
-      console.log("Orders have been written to orders.json");
-    }
-  });
-}
+    const consolidatedOrders = [];
+    orders.forEach((order) => {
+      const combinedItems = [];
+      const duplicateItems = [];
 
-function updateOrder(order) {
-  let raw = JSON.stringify({ order: order });
-  var requestOptions = {
-    method: "PUT",
-    headers: myHeaders,
-    body: raw,
-    redirect: "follow",
-  };
+      order.items.forEach((item) => {
+        const existingItem = combinedItems.find((i) => i.sku === item.sku);
+        if (existingItem) {
+          existingItem.value += item.value;
+          existingItem.quantity += item.quantity;
+          existingItem.quantity_to_ship += item.quantity_to_ship;
+          existingItem.quantity_shipped += item.quantity_shipped;
 
-  fetch("https://api.starshipit.com/api/orders", requestOptions)
-    .then((response) => response.text())
-    .then((result) => console.log(result))
-    .catch((error) => console.log("error", error));
-}
+          // Add duplicate item with quantity as 0
+          duplicateItems.push({
+            ...item,
+            quantity: 0,
+            quantity_to_ship: 0,
+            quantity_shipped: 0,
+          });
+        } else {
+          combinedItems.push({ ...item });
+        }
+      });
 
-function getOrdersWithDuplicateSKU(orders) {
-  const ordersWithDuplicateSKU = [];
-  orders.forEach((order) => {
-    const skuCount = {};
-    order.items.forEach((item) => {
-      skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
+      // Include duplicate items with quantity as 0
+      combinedItems.push(...duplicateItems);
+
+      // Set configured SKUs' item quantities to 0
+      combinedItems.forEach((item) => {
+        if (SKUS_TO_ZERO.includes(item.sku)) {
+          item.quantity = 0;
+          item.quantity_to_ship = 0;
+          item.quantity_shipped = 0;
+        }
+      });
+
+      consolidatedOrders.push({
+        order_id: order.order_id,
+        destination: order.destination ? { name: order.destination.name } : undefined,
+        items: combinedItems,
+      });
     });
-    const hasDuplicateSKU = Object.values(skuCount).some((count) => count > 1);
-    if (hasDuplicateSKU) {
-      ordersWithDuplicateSKU.push(order);
+    return consolidatedOrders;
+  }
+
+  function buildOrderWithSkuCustom4PackZeroed(order) {
+    return {
+      order_id: order.order_id,
+      destination: order.destination ? { name: order.destination.name } : undefined,
+      items: order.items.map((item) =>
+        SKUS_TO_ZERO.includes(item.sku)
+          ? { ...item, quantity: 0, quantity_to_ship: 0, quantity_shipped: 0 }
+          : { ...item }
+      ),
+    };
+  }
+
+  async function updateOrder(order) {
+    let raw = JSON.stringify({ order: order });
+    var requestOptions = {
+      method: "PUT",
+      headers: myHeaders,
+      body: raw,
+      redirect: "follow",
+    };
+
+    let response = await fetch(
+      "https://api.starshipit.com/api/orders",
+      requestOptions
+    );
+    return response.status === 200;
+  }
+
+  function updateOrderList(orders) {
+    orders.forEach((order) => {
+      updateOrder(order);
+    });
+  }
+
+  async function updateWithRetries(consolidatedOrders) {
+    let SuccessfullyUpdated = [];
+    for (const order of consolidatedOrders) {
+      await delay(API_DELAY_MS);
+      let retries = 3;
+      while (retries > 0) {
+        let res = await updateOrder(order);
+        if (res) {
+          console.log(`Successfully updated order: ${order.order_id}`);
+          SuccessfullyUpdated.push([order.order_id, order.destination?.name ?? null]);
+          break;
+        } else {
+          retries--;
+          console.error(
+            `Failed to update order: ${order.order_id}. Retries left: ${retries}.`
+          );
+          if (retries === 0) {
+            console.error(`Giving up on order: ${order.order_id}`);
+          } else {
+            await delay(API_DELAY_MS);
+          }
+        }
+      }
     }
-  });
-  return ordersWithDuplicateSKU;
+    return SuccessfullyUpdated;
+  }
+
+  function getOrdersWithDuplicateSKU(orders) {
+    const ordersWithDuplicateSKU = [];
+    orders.forEach((order) => {
+      const skuCount = {};
+      order.items.forEach((item) => {
+        skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
+      });
+      const hasDuplicateSKU = Object.values(skuCount).some(
+        (count) => count > 1
+      );
+      if (hasDuplicateSKU) {
+        allDupOrders.push([
+          order.order_id,
+          order.destination && order.destination.name ? order.destination.name : null
+        ]);
+        ordersWithDuplicateSKU.push(order);
+      }
+    });
+
+    // Find orders with duplicate SKU, but only count items with quantity > 0
+    orders.forEach((order) => {
+      const skuCount = {};
+      order.items.forEach((item) => {
+        if (item.quantity > 0) {
+          skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
+        }
+      });
+      const hasDuplicateSKU = Object.values(skuCount).some(
+        (count) => count > 1
+      );
+      if (hasDuplicateSKU) {
+        ordersWithDuplicateSKUExcludingZeroQty.push(order);
+        dupOrderswithZeroQty.push([
+          order.order_id,
+          order.destination && order.destination.name ? order.destination.name : null
+        ]);
+      }
+    });
+
+    return ordersWithDuplicateSKUExcludingZeroQty;
+  }
+  // console.log(JSON.stringify(accountResults))
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      success: true,
+      account1: accountResults[0] ?? {
+        allDupOrders: [],
+        updatedFromDuplicateSku: [],
+        updatedFromSkuCustom4Pack: [],
+      },
+      account2: accountResults[1] ?? {
+        allDupOrders: [],
+        updatedFromDuplicateSku: [],
+        updatedFromSkuCustom4Pack: [],
+      },
+    }),
+  };
 }
+
+
+// export const config = {
+//   schedule: "*/15 * * * *", // every 5 minutes
+// };
+
+
+// handler().then((res) => console.log(res))

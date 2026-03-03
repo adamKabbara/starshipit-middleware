@@ -1,4 +1,4 @@
-// import { writeFile } from "fs/promises";
+import { writeFile } from "fs/promises";
 
 export async function handler(event, context) {
   const apiKey1 = "c438e1afe4eb46db8e23e43812f1b4d0";
@@ -39,7 +39,8 @@ export async function handler(event, context) {
       await delay(API_DELAY_MS);
       let orders = obj.orders;
 
-      // await writeOrdersToFile(obj, `orders-${i + 1}.json`);
+      // write full API response (including orders array) to orders.json
+      await writeOrdersToFile(obj, "orders.json");
 
       let dups = getOrdersWithDuplicateSKU(orders);
       let consolidatedOrders = consolidateSKU(dups);
@@ -85,9 +86,9 @@ export async function handler(event, context) {
     ).then((response) => response.json());
   }
 
-  // async function writeOrdersToFile(orders, filename = "orders.json") {
-  //   await writeFile(filename, JSON.stringify(orders, null, 2), "utf-8");
-  // }
+  async function writeOrdersToFile(orders, filename = "orders.json") {
+    await writeFile(filename, JSON.stringify(orders, null, 2), "utf-8");
+  }
 
   function consolidateSKU(orders) {
 
