@@ -16,6 +16,7 @@ export async function handler(event, context) {
   let ordersWithDuplicateSKUExcludingZeroQty = [];
   const API_DELAY_MS = 1000;
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK"];
 
   try {
     for (let i = 0; i < apiKeys.length; i++) {
@@ -36,6 +37,7 @@ export async function handler(event, context) {
       dupOrderswithZeroQty = [];
 
       let obj = await fetchOrders();
+
       await delay(API_DELAY_MS);
       let orders = obj.orders;
 
@@ -44,11 +46,12 @@ export async function handler(event, context) {
       let dups = getOrdersWithDuplicateSKU(orders);
       let consolidatedOrders = consolidateSKU(dups);
 
-      const SKUCUSTOM4PACK = "SKUCUSTOM4PACK";
       const hasSkuCustom4PackWithNonZeroQty = (o) =>
-        o.items.some((item) => item.sku === SKUCUSTOM4PACK && item.quantity !== 0);
+        o.items.some(
+          (item) => SKUS_TO_ZERO.includes(item.sku) && item.quantity !== 0
+        );
       const ordersWithSkuCustom4Pack = orders.filter((o) =>
-        o.items.some((item) => item.sku === SKUCUSTOM4PACK)
+        o.items.some((item) => SKUS_TO_ZERO.includes(item.sku))
       );
       const dupOrderIds = new Set(dups.map((d) => d.order_id));
       const skuCustom4PackOnlyOrders = ordersWithSkuCustom4Pack.filter(
@@ -119,9 +122,9 @@ export async function handler(event, context) {
       // Include duplicate items with quantity as 0
       combinedItems.push(...duplicateItems);
 
-      // Set SKUCUSTOM4PACK item quantities to 0
+      // Set configured SKUs' item quantities to 0
       combinedItems.forEach((item) => {
-        if (item.sku === "SKUCUSTOM4PACK") {
+        if (SKUS_TO_ZERO.includes(item.sku)) {
           item.quantity = 0;
           item.quantity_to_ship = 0;
           item.quantity_shipped = 0;
@@ -142,7 +145,7 @@ export async function handler(event, context) {
       order_id: order.order_id,
       destination: order.destination ? { name: order.destination.name } : undefined,
       items: order.items.map((item) =>
-        item.sku === "SKUCUSTOM4PACK"
+        SKUS_TO_ZERO.includes(item.sku)
           ? { ...item, quantity: 0, quantity_to_ship: 0, quantity_shipped: 0 }
           : { ...item }
       ),
@@ -257,6 +260,7 @@ export async function handler(event, context) {
     }),
   };
 }
+
 
 // export const config = {
 //   schedule: "*/15 * * * *", // every 5 minutes
