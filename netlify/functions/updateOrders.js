@@ -16,7 +16,7 @@ export async function handler(event, context) {
   let ordersWithDuplicateSKUExcludingZeroQty = [];
   const API_DELAY_MS = 1000;
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK"];
+  const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK", "SKUCUSTOM6PACK"];
 
   try {
     for (let i = 0; i < apiKeys.length; i++) {
