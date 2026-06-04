@@ -16,7 +16,7 @@ export async function handler(event, context) {
   let ordersWithDuplicateSKUExcludingZeroQty = [];
   const API_DELAY_MS = 1000;
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK"];
+  const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK", "SKUCUSTOM6PACK"];
 
   try {
     for (let i = 0; i < apiKeys.length; i++) {
@@ -41,32 +41,37 @@ export async function handler(event, context) {
       await delay(API_DELAY_MS);
       let orders = obj.orders;
 
-      // await writeOrdersToFile(obj, `orders-${i + 1}.json`);
-      // 
       let dups = getOrdersWithDuplicateSKU(orders);
       let consolidatedOrders = consolidateSKU(dups);
 
       const hasSkuCustom4PackWithNonZeroQty = (o) =>
         o.items.some(
-          (item) => SKUS_TO_ZERO.includes(item.sku) && item.quantity !== 0
+          (item) => SKUS_TO_ZERO.includes(item.sku) && item.quantity !== 0,
         );
       const ordersWithSkuCustom4Pack = orders.filter((o) =>
-        o.items.some((item) => SKUS_TO_ZERO.includes(item.sku))
+        o.items.some((item) => SKUS_TO_ZERO.includes(item.sku)),
       );
       const dupOrderIds = new Set(dups.map((d) => d.order_id));
       const skuCustom4PackOnlyOrders = ordersWithSkuCustom4Pack.filter(
-        (o) => !dupOrderIds.has(o.order_id) && hasSkuCustom4PackWithNonZeroQty(o)
+        (o) =>
+          !dupOrderIds.has(o.order_id) && hasSkuCustom4PackWithNonZeroQty(o),
       );
-      const skuCustom4PackUpdates = skuCustom4PackOnlyOrders.map(buildOrderWithSkuCustom4PackZeroed);
+      const skuCustom4PackUpdates = skuCustom4PackOnlyOrders.map(
+        buildOrderWithSkuCustom4PackZeroed,
+      );
 
       let updatedFromDuplicateSku = await updateWithRetries(consolidatedOrders);
-      let updatedFromSkuCustom4Pack = await updateWithRetries(skuCustom4PackUpdates);
+      let updatedFromSkuCustom4Pack = await updateWithRetries(
+        skuCustom4PackUpdates,
+      );
 
       accountResults.push({
         allDupOrders: [...allDupOrders],
         updatedFromDuplicateSku,
         updatedFromSkuCustom4Pack,
       });
+
+      // await writeOrdersToFile(orders, `orders-${i + 1}.json`);
 
       if (i < apiKeys.length - 1) {
         await delay(API_DELAY_MS);
@@ -80,11 +85,10 @@ export async function handler(event, context) {
     };
   }
 
-
   async function fetchOrders() {
     return await fetch(
       "https://api.starshipit.com/api/orders/unshipped?limit=250&since_last_updated=2024-05-27T06:00:00.000Z&since_order_date=2024-05-27T06:00:00.000Z",
-      requestOptions
+      requestOptions,
     ).then((response) => response.json());
   }
 
@@ -93,7 +97,6 @@ export async function handler(event, context) {
   // }
 
   function consolidateSKU(orders) {
-
     const consolidatedOrders = [];
     orders.forEach((order) => {
       const combinedItems = [];
@@ -133,7 +136,9 @@ export async function handler(event, context) {
 
       consolidatedOrders.push({
         order_id: order.order_id,
-        destination: order.destination ? { name: order.destination.name } : undefined,
+        destination: order.destination
+          ? { name: order.destination.name }
+          : undefined,
         items: combinedItems,
       });
     });
@@ -143,11 +148,13 @@ export async function handler(event, context) {
   function buildOrderWithSkuCustom4PackZeroed(order) {
     return {
       order_id: order.order_id,
-      destination: order.destination ? { name: order.destination.name } : undefined,
+      destination: order.destination
+        ? { name: order.destination.name }
+        : undefined,
       items: order.items.map((item) =>
         SKUS_TO_ZERO.includes(item.sku)
           ? { ...item, quantity: 0, quantity_to_ship: 0, quantity_shipped: 0 }
-          : { ...item }
+          : { ...item },
       ),
     };
   }
@@ -163,7 +170,7 @@ export async function handler(event, context) {
 
     let response = await fetch(
       "https://api.starshipit.com/api/orders",
-      requestOptions
+      requestOptions,
     );
     return response.status === 200;
   }
@@ -183,12 +190,15 @@ export async function handler(event, context) {
         let res = await updateOrder(order);
         if (res) {
           console.log(`Successfully updated order: ${order.order_id}`);
-          SuccessfullyUpdated.push([order.order_id, order.destination?.name ?? null]);
+          SuccessfullyUpdated.push([
+            order.order_id,
+            order.destination?.name ?? null,
+          ]);
           break;
         } else {
           retries--;
           console.error(
-            `Failed to update order: ${order.order_id}. Retries left: ${retries}.`
+            `Failed to update order: ${order.order_id}. Retries left: ${retries}.`,
           );
           if (retries === 0) {
             console.error(`Giving up on order: ${order.order_id}`);
@@ -206,15 +216,31 @@ export async function handler(event, context) {
     orders.forEach((order) => {
       const skuCount = {};
       order.items.forEach((item) => {
+        if (item.description.includes("Dark")) {
+          console.log(item.description);
+          console.log(item.sku);
+          console.log(
+            item.sku == undefined || item.sku == null || item.sku.trim() == "",
+          );
+        }
+        if (
+          item.sku == undefined ||
+          item.sku == null ||
+          item.sku.trim() == ""
+        ) {
+          return;
+        }
         skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
       });
       const hasDuplicateSKU = Object.values(skuCount).some(
-        (count) => count > 1
+        (count) => count > 1,
       );
       if (hasDuplicateSKU) {
         allDupOrders.push([
           order.order_id,
-          order.destination && order.destination.name ? order.destination.name : null
+          order.destination && order.destination.name
+            ? order.destination.name
+            : null,
         ]);
         ordersWithDuplicateSKU.push(order);
       }
@@ -225,17 +251,26 @@ export async function handler(event, context) {
       const skuCount = {};
       order.items.forEach((item) => {
         if (item.quantity > 0) {
+          if (
+            item.sku == undefined ||
+            item.sku == null ||
+            item.sku.trim() == ""
+          ) {
+            return;
+          }
           skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
         }
       });
       const hasDuplicateSKU = Object.values(skuCount).some(
-        (count) => count > 1
+        (count) => count > 1,
       );
       if (hasDuplicateSKU) {
         ordersWithDuplicateSKUExcludingZeroQty.push(order);
         dupOrderswithZeroQty.push([
           order.order_id,
-          order.destination && order.destination.name ? order.destination.name : null
+          order.destination && order.destination.name
+            ? order.destination.name
+            : null,
         ]);
       }
     });
@@ -261,10 +296,8 @@ export async function handler(event, context) {
   };
 }
 
-
 // export const config = {
 //   schedule: "*/15 * * * *", // every 5 minutes
 // };
 
-
-handler().then((res) => console.log(res))
+// handler().then((res) => console.log(res));
