@@ -1,4 +1,4 @@
-// import { writeFile } from "fs/promises";
+import { writeFile } from "fs/promises";
 
 export async function handler(event, context) {
   const apiKey1 = "c438e1afe4eb46db8e23e43812f1b4d0";
@@ -17,6 +17,7 @@ export async function handler(event, context) {
   const API_DELAY_MS = 1000;
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK", "SKUCUSTOM6PACK"];
+  const isValidSku = (sku) => sku != null && String(sku).trim() !== "";
 
   try {
     for (let i = 0; i < apiKeys.length; i++) {
@@ -71,7 +72,7 @@ export async function handler(event, context) {
         updatedFromSkuCustom4Pack,
       });
 
-      // await writeOrdersToFile(orders, `orders-${i + 1}.json`);
+      await writeOrdersToFile(orders, `orders-${i + 1}.json`);
 
       if (i < apiKeys.length - 1) {
         await delay(API_DELAY_MS);
@@ -87,14 +88,14 @@ export async function handler(event, context) {
 
   async function fetchOrders() {
     return await fetch(
-      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_last_updated=2024-05-27T06:00:00.000Z&since_order_date=2024-05-27T06:00:00.000Z",
+      "https://api.starshipit.com/api/orders/unshipped?limit=250&since_last_updated=2024-05-27T06:00:00.000Z&since_order_date=2024-05-27T06:00:00.000Z&page=2",
       requestOptions,
     ).then((response) => response.json());
   }
 
-  // async function writeOrdersToFile(orders, filename = "orders.json") {
-  //   await writeFile(filename, JSON.stringify(orders, null, 2), "utf-8");
-  // }
+  async function writeOrdersToFile(orders, filename = "orders.json") {
+    await writeFile(filename, JSON.stringify(orders, null, 2), "utf-8");
+  }
 
   function consolidateSKU(orders) {
     const consolidatedOrders = [];
@@ -103,6 +104,10 @@ export async function handler(event, context) {
       const duplicateItems = [];
 
       order.items.forEach((item) => {
+        if (!isValidSku(item.sku)) {
+          combinedItems.push({ ...item });
+          return;
+        }
         const existingItem = combinedItems.find((i) => i.sku === item.sku);
         if (existingItem) {
           existingItem.value += item.value;
@@ -216,18 +221,7 @@ export async function handler(event, context) {
     orders.forEach((order) => {
       const skuCount = {};
       order.items.forEach((item) => {
-        if (item.description.includes("Dark")) {
-          console.log(item.description);
-          console.log(item.sku);
-          console.log(
-            item.sku == undefined || item.sku == null || item.sku.trim() == "",
-          );
-        }
-        if (
-          item.sku == undefined ||
-          item.sku == null ||
-          item.sku.trim() == ""
-        ) {
+        if (!isValidSku(item.sku)) {
           return;
         }
         skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
@@ -251,11 +245,7 @@ export async function handler(event, context) {
       const skuCount = {};
       order.items.forEach((item) => {
         if (item.quantity > 0) {
-          if (
-            item.sku == undefined ||
-            item.sku == null ||
-            item.sku.trim() == ""
-          ) {
+          if (!isValidSku(item.sku)) {
             return;
           }
           skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
@@ -300,4 +290,4 @@ export async function handler(event, context) {
 //   schedule: "*/15 * * * *", // every 5 minutes
 // };
 
-// handler().then((res) => console.log(res));
+handler().then((res) => console.log(res));

@@ -17,6 +17,7 @@ export async function handler(event, context) {
   const API_DELAY_MS = 1000;
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SKUS_TO_ZERO = ["SKUCUSTOM4PACK", "SKUCUSTOM8PACK", "SKUCUSTOM6PACK"];
+  const isValidSku = (sku) => sku != null && String(sku).trim() !== "";
 
   try {
     for (let i = 0; i < apiKeys.length; i++) {
@@ -103,6 +104,10 @@ export async function handler(event, context) {
       const duplicateItems = [];
 
       order.items.forEach((item) => {
+        if (!isValidSku(item.sku)) {
+          combinedItems.push({ ...item });
+          return;
+        }
         const existingItem = combinedItems.find((i) => i.sku === item.sku);
         if (existingItem) {
           existingItem.value += item.value;
@@ -216,18 +221,7 @@ export async function handler(event, context) {
     orders.forEach((order) => {
       const skuCount = {};
       order.items.forEach((item) => {
-        if (item.description.includes("Dark")) {
-          console.log(item.description);
-          console.log(item.sku);
-          console.log(
-            item.sku == undefined || item.sku == null || item.sku.trim() == "",
-          );
-        }
-        if (
-          item.sku == undefined ||
-          item.sku == null ||
-          item.sku.trim() == ""
-        ) {
+        if (!isValidSku(item.sku)) {
           return;
         }
         skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
@@ -251,11 +245,7 @@ export async function handler(event, context) {
       const skuCount = {};
       order.items.forEach((item) => {
         if (item.quantity > 0) {
-          if (
-            item.sku == undefined ||
-            item.sku == null ||
-            item.sku.trim() == ""
-          ) {
+          if (!isValidSku(item.sku)) {
             return;
           }
           skuCount[item.sku] = (skuCount[item.sku] || 0) + 1;
